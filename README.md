@@ -231,3 +231,9 @@ In the Streamlit app, the agent runs in a dedicated background thread with its o
 | `GROQ_MODEL` | | `qwen/qwen3-32b` | Groq model ID |
 | `EMBEDDING_MODEL` | | `BAAI/bge-small-en-v1.5` | Sentence-transformers model |
 | `RERANKER_MODEL` | | `cross-encoder/ms-marco-MiniLM-L-6-v2` | CrossEncoder reranker model |
+
+---
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
