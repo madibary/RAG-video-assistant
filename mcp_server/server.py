@@ -30,7 +30,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 
-from retrieval import search_transcripts as _search
+from mcp_server.retrieval import search_transcripts as _search
 
 load_dotenv()
 
