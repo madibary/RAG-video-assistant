@@ -4,6 +4,13 @@ A retrieval-augmented generation pipeline that ingests YouTube video transcripts
 
 ---
 
+## Demo
+
+<video src="https://github.com/user-attachments/assets/6415bcf5-0cb8-4c91-9cd0-7c5537a498fe" controls="controls" style="max-width: 600px;"></video>
+
+
+
+
 ## Architecture
 
 ```
