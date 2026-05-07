@@ -128,29 +128,6 @@ python mcp_client/agent.py "What does the speaker say about transformers?"
 python mcp_client/agent.py --show-tools "your question"
 ```
 
----
-
-## Project structure
-
-```
-RAG video project/
-├── app.py                      # Streamlit UI (ingest tab + chat tab)
-├── ingest.py                   # CLI ingestion entrypoint
-├── requirements.txt
-│
-├── ingestion/                  # Reusable ingestion library
-│   ├── transcript.py           # Fetch transcript + metadata via yt-dlp
-│   ├── chunker.py              # Timeframe-aware semantic chunking
-│   ├── embedder.py             # BAAI/bge-small-en-v1.5 wrapper
-│   └── store.py                # Pinecone upsert helpers
-│
-├── mcp_server/                 # MCP server (transcript search)
-│   ├── server.py               # FastMCP server — exposes search_transcripts
-│   └── retrieval.py            # Pinecone query + CrossEncoder reranking
-│
-└── mcp_client/                 # MCP client + agent
-    └── agent.py                # LangGraph ReAct agent via MultiServerMCPClient
-```
 
 ---
 
@@ -205,6 +182,22 @@ Pinecone's ANN search returns approximate nearest neighbours by embedding cosine
 3. **Trim** — sort by reranker score descending and return the top `n_results`
 
 The CrossEncoder model is loaded once as a lazy singleton and reused across all requests.
+
+### Input guardrails
+
+Every question passes through a lightweight guardrail node before reaching the agent. The guardrail makes a separate LLM call using a classification prompt and routes the request based on the result:
+
+- **ALLOW** — question proceeds to the agent normally
+- **BLOCK** — a rejection message is returned immediately; the agent and all tools are never invoked
+
+Questions are allowed if they relate to video content, academic topics, or are follow-up clarifications. Questions are blocked if they are harmful or illegal, completely off-topic (personal tasks, small talk, unrelated coding requests), or prompt injection attempts.
+
+The guardrail is implemented as a dedicated node at the start of the LangGraph `StateGraph`. Because the default model (`qwen/qwen3-32b`) is a reasoning model that wraps its output in `<think>...</think>` tags, the guardrail strips those before checking whether the response starts with `BLOCK`.
+
+```
+START → guardrail → (BLOCK → END)
+                  → (ALLOW → agent → tools → agent → … → END)
+```
 
 ### MCP architecture
 
