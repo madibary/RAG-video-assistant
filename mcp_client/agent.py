@@ -26,6 +26,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -33,94 +34,14 @@ _PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(_PROJECT_ROOT))
 
 from dotenv import load_dotenv
-from langchain_core.messages import (
-    AIMessage,
-    AIMessageChunk,
-    HumanMessage,
-    SystemMessage,
-    ToolMessage,
-)
+from langchain_core.messages import AIMessageChunk, HumanMessage, ToolMessage
 from langchain_groq import ChatGroq
-from langchain_mcp_adapters.client import MultiServerMCPClient, Connection
-from langchain_mcp_adapters.sessions import StdioConnection
-from langgraph.graph import END, START, MessagesState, StateGraph
-from langgraph.prebuilt import ToolNode
+from langchain_mcp_adapters.client import MultiServerMCPClient
+from langgraph.graph import MessagesState
+
+from mcp_client.core import MODEL_NAME, MCP_SERVERS, build_agent
 
 load_dotenv(_PROJECT_ROOT / ".env")
-
-# ---------------------------------------------------------------------------
-# Config
-# ---------------------------------------------------------------------------
-
-MODEL_NAME = os.environ.get("GROQ_MODEL", "qwen/qwen3-32b")
-
-_MCP_SERVERS: dict[str, Connection] = {
-    "youtube-rag": StdioConnection(
-        transport="stdio",
-        command=sys.executable,
-        args=[str(_PROJECT_ROOT / "mcp_server" / "server.py")],
-        env=dict(os.environ),
-    ),
-    "arxiv": StdioConnection(
-        transport="stdio",
-        command=sys.executable,
-        args=["-m", "mcp_simple_arxiv"],
-        env=dict(os.environ),
-    ),
-}
-
-# ---------------------------------------------------------------------------
-# System prompt
-# ---------------------------------------------------------------------------
-
-SYSTEM_PROMPT = """\
-You are a helpful assistant that answers questions about YouTube video content \
-that has been indexed into a knowledge base.
-
-## Step 1 — Answer from video transcripts
-Call search_transcripts one or more times to find relevant passages.
-Try different phrasings if the first search does not return useful results.
-Base your answer only on what is in the retrieved passages.
-Each result contains a "citation" field — include it verbatim after every claim:
-    <claim text> [Video Title – H:MM:SS](timestamp_url)
-If you cannot find the answer, say so clearly.
-
-## Step 2 — Further Reading (academic papers only)
-After writing your answer, call search_papers ONCE with the core topic.
-This tool returns academic papers from Semantic Scholar — not videos.
-Present the results under a "## Further Reading" heading:
-    - [Paper Title](url) — Author A, Author B (Year)
-      > One-sentence summary of what the paper is about.
-Include 2–3 papers. If search_papers returns no results, omit this section.
-IMPORTANT: Never put video citations or timestamps in the Further Reading section.\
-"""
-
-# ---------------------------------------------------------------------------
-# LangGraph agent factory
-# ---------------------------------------------------------------------------
-
-
-def _build_agent(llm: ChatGroq, tools: list):
-    llm_with_tools = llm.bind_tools(tools)
-    tool_node = ToolNode(tools)
-
-    def _call_model(state: MessagesState) -> dict:
-        messages = state["messages"]
-        if not any(isinstance(m, SystemMessage) for m in messages):
-            messages = [SystemMessage(content=SYSTEM_PROMPT)] + messages
-        return {"messages": [llm_with_tools.invoke(messages)]}
-
-    def _should_continue(state: MessagesState) -> str:
-        last = state["messages"][-1]
-        return "tools" if isinstance(last, AIMessage) and last.tool_calls else END
-
-    graph = StateGraph(MessagesState)
-    graph.add_node("agent", _call_model)
-    graph.add_node("tools", tool_node)
-    graph.add_edge(START, "agent")
-    graph.add_conditional_edges("agent", _should_continue, ["tools", END])
-    graph.add_edge("tools", "agent")
-    return graph.compile()
 
 
 # ---------------------------------------------------------------------------
@@ -146,9 +67,9 @@ async def run_session(
         temperature=0,
     )
 
-    client = MultiServerMCPClient(_MCP_SERVERS)
+    client = MultiServerMCPClient(MCP_SERVERS)
     tools = await client.get_tools()
-    agent = _build_agent(llm, tools)
+    agent = build_agent(llm, tools)
 
     if questions:
         for question in questions:
