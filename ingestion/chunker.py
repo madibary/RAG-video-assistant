@@ -167,6 +167,20 @@ def _sentences_with_timestamps(
         )
         records.append(SentenceRecord(text=text, start_time=start_time, end_time=end_time))
 
+    # Auto-generated YouTube transcripts have no punctuation, so the sentencizer
+    # treats the whole transcript as one sentence → no breakpoints → one chunk.
+    # Fall back to using the raw segments as atomic units instead.
+    if len(records) <= 1:
+        records = [
+            SentenceRecord(
+                text=seg.text.strip(),
+                start_time=seg.start,
+                end_time=seg.start + seg.duration,
+            )
+            for _, _, seg in offset_index
+            if seg.text.strip()
+        ]
+
     return records
 
 
